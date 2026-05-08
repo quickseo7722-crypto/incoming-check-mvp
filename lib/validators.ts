@@ -6,6 +6,17 @@ export const loginSchema = z.object({
   password: z.string().min(4, "密碼至少 4 碼"),
 });
 
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "請輸入目前密碼"),
+    newPassword: z.string().min(8, "新密碼至少 8 碼"),
+    confirmPassword: z.string().min(1, "請再次輸入新密碼"),
+  })
+  .refine((value) => value.newPassword === value.confirmPassword, {
+    message: "新密碼與確認新密碼必須一致",
+    path: ["confirmPassword"],
+  });
+
 export const purchaseOrderCreateSchema = z.object({
   title: z.string().min(1, "請輸入叫貨單標題"),
   supplierName: z.string().optional().default(""),

@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       supplierName: parsed.data.supplierName || null,
       orderDate: parsed.data.orderDate ? new Date(parsed.data.orderDate) : null,
       createdById: session.userId,
-      shareToken: randomBytes(18).toString("hex"),
+      shareToken: randomBytes(32).toString("hex"),
     },
   });
 

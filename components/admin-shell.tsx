@@ -36,6 +36,9 @@ export function AdminShell({ title, subtitle, userName, children }: AdminShellPr
             <Link className="btn-secondary" href="/history">
               歷史紀錄
             </Link>
+            <Link className="btn-secondary" href="/settings/password">
+              修改密碼
+            </Link>
           </div>
         </section>
 
