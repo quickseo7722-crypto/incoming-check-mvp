@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --bg: #f7efe4;
+  --bg-soft: #fffaf4;
+  --panel: rgba(255, 250, 244, 0.9);
+  --panel-strong: #fffdf9;
+  --line: rgba(180, 120, 67, 0.18);
+  --text: #1f2937;
+  --muted: #6b7280;
+  --accent: #c8641b;
+  --accent-soft: #f59e0b;
+  --ok: #047857;
+  --warn: #b45309;
+  --danger: #b91c1c;
+}
+
+html {
+  background:
+    radial-gradient(circle at top left, rgba(250, 204, 21, 0.25), transparent 28%),
+    radial-gradient(circle at top right, rgba(15, 118, 110, 0.18), transparent 32%),
+    linear-gradient(180deg, #f8f0e7 0%, #f6f1ea 42%, #fbfaf7 100%);
+}
+
+body {
+  min-height: 100vh;
+  color: var(--text);
+  font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif;
+  background: transparent;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: "Noto Serif TC", Georgia, "Times New Roman", serif;
+  letter-spacing: 0.01em;
+}
+
+input,
+textarea,
+select {
+  outline: none;
+}
+
+::selection {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.panel {
+  @apply rounded-2xl border border-white/60 bg-white/80 shadow-panel backdrop-blur;
+}
+
+.field {
+  @apply w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm transition focus:border-orange-300 focus:ring-2 focus:ring-orange-100;
+}
+
+.btn-primary {
+  @apply inline-flex items-center justify-center rounded-xl bg-orange-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-orange-500 disabled:cursor-not-allowed disabled:bg-orange-300;
+}
+
+.btn-secondary {
+  @apply inline-flex items-center justify-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-orange-200 hover:text-orange-700;
+}
+
+.btn-danger {
+  @apply inline-flex items-center justify-center rounded-xl bg-rose-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-rose-500;
+}

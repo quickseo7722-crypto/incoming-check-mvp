@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  // Direct (non-pooled) connection used by `prisma migrate`. Required when
+  // DATABASE_URL points at Supabase's PgBouncer pooler.
+  directUrl = env("DIRECT_URL")
+}
+
+enum UserRole {
+  ADMIN
+  STAFF
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_CHECKING
+  IN_PROGRESS
+  COMPLETED
+  HAS_ISSUES
+  CLOSED
+}
+
+enum OcrStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+}
+
+enum ItemCheckStatus {
+  UNCHECKED
+  RECEIVED
+  MISSING
+  PARTIAL
+  QUANTITY_MISMATCH
+  WRONG_ITEM
+  QUALITY_ISSUE
+  NEEDS_REVIEW
+}
+
+model User {
+  id                    String              @id @default(cuid())
+  name                  String
+  email                 String              @unique
+  passwordHash          String
+  role                  UserRole            @default(STAFF)
+  isActive              Boolean             @default(true)
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  purchaseOrdersCreated PurchaseOrder[]     @relation("PurchaseOrderCreator")
+  assignedOrders        PurchaseOrder[]     @relation("PurchaseOrderAssignee")
+  checkedItems          PurchaseOrderItem[] @relation("ItemChecker")
+  auditLogs             AuditLog[]
+}
+
+model Supplier {
+  id             String          @id @default(cuid())
+  name           String          @unique
+  contactName    String?
+  phone          String?
+  note           String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  purchaseOrders PurchaseOrder[]
+}
+
+model PurchaseOrder {
+  id              String               @id @default(cuid())
+  title           String
+  supplierId      String?
+  supplierName    String?
+  supplier        Supplier?            @relation(fields: [supplierId], references: [id])
+  status          PurchaseOrderStatus  @default(DRAFT)
+  orderDate       DateTime?
+  createdById     String
+  createdBy       User                 @relation("PurchaseOrderCreator", fields: [createdById], references: [id])
+  assignedToId    String?
+  assignedTo      User?                @relation("PurchaseOrderAssignee", fields: [assignedToId], references: [id])
+  shareToken      String               @unique
+  finalNote       String?
+  submittedByName String?
+  completedAt     DateTime?
+  closedAt        DateTime?
+  images          PurchaseOrderImage[]
+  items           PurchaseOrderItem[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+}
+
+model PurchaseOrderImage {
+  id              String        @id @default(cuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id])
+  // Public URL where the image is served from (e.g. Vercel Blob).
+  url             String
+  originalName    String
+  mimeType        String?
+  fileSize        Int?
+  ocrStatus       OcrStatus     @default(PENDING)
+  rawText         String?
+  aiJson          String?
+  parseError      String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+}
+
+model PurchaseOrderItem {
+  id               String          @id @default(cuid())
+  purchaseOrderId  String
+  purchaseOrder    PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id])
+  sortOrder        Int             @default(0)
+  name             String
+  spec             String?
+  orderedQuantity  Float?
+  unit             String?
+  receivedQuantity Float?
+  status           ItemCheckStatus @default(UNCHECKED)
+  staffNote        String?
+  bossNote         String?
+  note             String?
+  confidence       Float?
+  rawText          String?
+  checkedById      String?
+  checkedBy        User?           @relation("ItemChecker", fields: [checkedById], references: [id])
+  checkedByName    String?
+  checkedAt        DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  user       User?    @relation(fields: [userId], references: [id])
+  action     String
+  targetType String
+  targetId   String
+  metadata   String?
+  createdAt  DateTime @default(now())
+}
