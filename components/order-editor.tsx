@@ -6,6 +6,7 @@ import { useState } from "react";
 import { ItemCheckStatus, PurchaseOrderStatus } from "@prisma/client";
 import { OrderStatusBadge } from "@/components/status-badge";
 import { itemStatusOptions } from "@/lib/labels";
+import { formatPackageNote, normalizePackageOuterUnit } from "@/lib/package-note";
 
 type EditableImage = {
   id: string;
@@ -69,10 +70,10 @@ function normalizeOrder(order: EditableOrder): EditableOrder {
       ...item,
       name: trimText(item.name),
       spec: trimText(item.spec),
-      unit: trimText(item.unit),
+      unit: normalizePackageOuterUnit(item.unit),
       staffNote: trimText(item.staffNote),
       bossNote: trimText(item.bossNote),
-      note: trimText(item.note),
+      note: formatPackageNote(item.note, item.unit),
       rawText: trimText(item.rawText),
       checkedByName: trimText(item.checkedByName),
       orderedQuantity: normalizeNumber(item.orderedQuantity),
@@ -87,10 +88,10 @@ function sanitizeItemForSave(item: EditableItem): EditableItem {
     ...item,
     name: trimText(item.name),
     spec: trimText(item.spec),
-    unit: trimText(item.unit),
+    unit: normalizePackageOuterUnit(item.unit),
     staffNote: trimText(item.staffNote),
     bossNote: trimText(item.bossNote),
-    note: trimText(item.note),
+    note: formatPackageNote(item.note, item.unit),
     rawText: trimText(item.rawText),
     checkedByName: trimText(item.checkedByName),
     orderedQuantity: normalizeNumber(item.orderedQuantity),

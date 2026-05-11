@@ -1,3 +1,10 @@
+import {
+  formatPackageNote,
+  isInnerPackageUnit,
+  normalizePackageOuterUnit,
+  parsePackageNote,
+} from "@/lib/package-note";
+
 export type ParsedImageItem = {
   name: string;
   spec: string;
@@ -14,38 +21,6 @@ export type ParsedOrderPayload = {
   items: ParsedImageItem[];
   warnings: string[];
 };
-
-const OUTER_PACKAGE_UNITS = [
-  "件",
-  "箱",
-  "包",
-  "組",
-  "套",
-  "袋",
-  "盒",
-  "板",
-  "卷",
-  "捆",
-  "扎",
-];
-
-const INNER_CONTENT_UNITS = [
-  "个",
-  "個",
-  "pcs",
-  "pc",
-  "只",
-  "支",
-  "枚",
-  "片",
-  "對",
-  "对",
-  "雙",
-  "条",
-  "條",
-  "瓶",
-  "罐",
-];
 
 const responseSchema = {
   type: "object",
@@ -88,13 +63,6 @@ const responseSchema = {
   required: ["supplier_name", "order_date", "items", "warnings"],
 } as const;
 
-type PackageHint = {
-  outerQuantity: number | null;
-  outerUnit: string;
-  innerQuantity: number;
-  innerUnit: string;
-};
-
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -109,117 +77,50 @@ function normalizeWhitespace(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function buildNormalizedPackageNote(packageHint: PackageHint) {
-  return `每${packageHint.outerUnit} ${packageHint.innerQuantity}${packageHint.innerUnit}`;
-}
-
-function extractPackageHint(text: string): PackageHint | null {
-  const normalized = normalizeWhitespace(text);
-  if (!normalized) return null;
-
-  const outerUnitGroup = OUTER_PACKAGE_UNITS.map(escapeRegExp).join("|");
-  const innerUnitGroup = INNER_CONTENT_UNITS.map(escapeRegExp).join("|");
-
-  const explicitMultiplierPattern = new RegExp(
-    `(\\d+(?:\\.\\d+)?)\\s*(${outerUnitGroup})\\s*[x×＊*]\\s*(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
-    "i",
-  );
-  const implicitMultiplierPattern = new RegExp(
-    `(\\d+(?:\\.\\d+)?)\\s*(${outerUnitGroup})\\s+(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
-    "i",
-  );
-  const perPackagePattern = new RegExp(
-    `每\\s*(${outerUnitGroup})\\s*(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
-    "i",
-  );
-
-  let match = explicitMultiplierPattern.exec(normalized);
-  if (match) {
-    return {
-      outerQuantity: normalizeNumber(match[1]),
-      outerUnit: match[2],
-      innerQuantity: Number(match[3]),
-      innerUnit: match[4],
-    };
-  }
-
-  match = implicitMultiplierPattern.exec(normalized);
-  if (match) {
-    return {
-      outerQuantity: normalizeNumber(match[1]),
-      outerUnit: match[2],
-      innerQuantity: Number(match[3]),
-      innerUnit: match[4],
-    };
-  }
-
-  match = perPackagePattern.exec(normalized);
-  if (match) {
-    return {
-      outerQuantity: null,
-      outerUnit: match[1],
-      innerQuantity: Number(match[2]),
-      innerUnit: match[3],
-    };
-  }
-
-  return null;
-}
-
-function isInnerContentUnit(unit: string) {
-  return INNER_CONTENT_UNITS.includes(unit);
-}
-
-function mergePackageNote(existingNote: string, packageNote: string) {
-  if (!existingNote) return packageNote;
-  return existingNote.includes(packageNote) ? existingNote : `${existingNote}｜${packageNote}`;
-}
-
 function normalizeParsedItem(
   item: ParsedImageItem,
   index: number,
   warnings: string[],
 ): ParsedImageItem {
   let name = cleanText(item.name);
-  let spec = cleanText(item.spec);
-  let unit = cleanText(item.unit);
-  let note = cleanText(item.note);
+  const spec = cleanText(item.spec);
   const raw_text = normalizeWhitespace(cleanText(item.raw_text));
   const confidence = normalizeNumber(item.confidence) ?? 0;
   let ordered_quantity = normalizeNumber(item.ordered_quantity);
+  let unit = normalizePackageOuterUnit(item.unit);
+  let note = cleanText(item.note);
 
-  const packageHint = extractPackageHint(
-    [spec, note, raw_text].filter(Boolean).join(" "),
-  );
+  const packageSource = [note, raw_text, spec].filter(Boolean).join(" ");
+  const packageHint = parsePackageNote(packageSource, unit);
 
-  // v1 rule: count by outer package quantity; keep inner content quantity in note.
+  // v1 rule: count outer packages in the main quantity/unit fields.
   if (packageHint) {
-    const packageNote = buildNormalizedPackageNote(packageHint);
-
-    if (!unit || isInnerContentUnit(unit)) {
-      unit = packageHint.outerUnit;
-    }
+    unit = normalizePackageOuterUnit(unit || packageHint.outerUnit);
 
     if (ordered_quantity === null && packageHint.outerQuantity !== null) {
       ordered_quantity = packageHint.outerQuantity;
     }
 
-    note = mergePackageNote(note, packageNote);
+    note = formatPackageNote(packageSource, unit);
 
     if (ordered_quantity !== null && packageHint.outerQuantity !== null) {
       const mismatched = Math.abs(ordered_quantity - packageHint.outerQuantity) > 0.0001;
       if (mismatched) {
         warnings.push(
-          `第 ${index + 1} 筆包裝數量與備註可能不一致，已保留外層數量 ${ordered_quantity}${unit || ""}。`,
+          `第 ${index + 1} 筆包裝數量與包裝說明可能不一致，已優先保留外層叫貨數量 ${ordered_quantity}${unit || ""}。`,
         );
       }
     }
-  } else if (raw_text && /个|個/.test(raw_text) && (!unit || isInnerContentUnit(unit))) {
-    warnings.push(`第 ${index + 1} 筆可能包含內含數量資訊，請人工確認主要清點單位。`);
+  } else {
+    note = formatPackageNote(note, unit);
+
+    if ((!unit || isInnerPackageUnit(unit)) && /个|個/.test(packageSource)) {
+      warnings.push(`第 ${index + 1} 筆可能包含內含數量資訊，請人工確認主要清點單位。`);
+    }
+  }
+
+  if (unit === "個" && packageHint?.outerUnit) {
+    unit = normalizePackageOuterUnit(packageHint.outerUnit);
   }
 
   if (!name) {
@@ -270,14 +171,12 @@ function tryExtractStructuredJson(payload: any) {
   throw new Error("OpenAI 回應中找不到可解析的 JSON。");
 }
 
-// The system stores v1 counting data as:
-// - ordered_quantity: outer package quantity
-// - unit: outer package unit
-// - note: inner content quantity, e.g. "每件 7000个"
+// v1 stores outer package quantity/unit in the main columns and keeps
+// inner content counts in note, e.g. "1箱 = 7000個".
 export async function parsePurchaseOrderImage(imageUrl: string): Promise<ParsedOrderPayload> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("缺少 OPENAI_API_KEY，無法啟動圖片解析。");
+    throw new Error("缺少 OPENAI_API_KEY，無法進行圖片解析。");
   }
 
   if (!/^https?:\/\//i.test(imageUrl)) {
@@ -298,17 +197,18 @@ export async function parsePurchaseOrderImage(imageUrl: string): Promise<ParsedO
           content: [
             {
               type: "input_text",
-              text:
-                [
-                  "你是進貨叫貨單解析助手。請從供應商截圖或表格中擷取清點用品項，輸出必須符合 JSON schema。",
-                  "第一版清點主欄位只保留：name、spec、ordered_quantity、unit、note、raw_text、confidence。",
-                  "重要規則：若出現「1件 * 7000个」、「2件 * 1000个」、「1箱 7000個」、「每箱 7000個」這種雙單位資訊，ordered_quantity 必須優先使用外層包裝數量，unit 必須優先使用外層包裝單位，例如 件、箱、包、組。",
-                  "內含數量例如 7000个 不可當成主要清點單位，應放進 note，例如「每件 7000个」。",
-                  "spec 保留商品規格，例如 17*30；不要把價格、金額當成數量。",
-                  "如果表格中有數量欄、價格欄、金額欄，ordered_quantity 只能取數量欄，不可把價格 376 或金額 376 當成數量。",
-                  "若無法判斷外層單位與內容單位，請在 warnings 中明確說明，不要亂猜。",
-                  "範例：規格 17*30、數量 1、備註 1件 * 7000个，應輸出 ordered_quantity=1、unit=件、note=每件 7000个。",
-                ].join(" "),
+              text: [
+                "你是進貨叫貨單解析助手。請從供應商截圖或表格中擷取清點用品項，輸出必須符合 JSON schema。",
+                "第一版清點主欄位只保留：name、spec、ordered_quantity、unit、note、raw_text、confidence。",
+                "重要規則：若出現「1件 * 7000个」、「2件 * 1000个」、「1箱 7000個」、「每箱 7000個」這種雙單位資訊，ordered_quantity 必須優先使用外層包裝數量，unit 必須優先使用外層包裝單位。",
+                "在本系統的進貨清點情境中，1688 或中國訂單中的「件」請轉成「箱」；「个」請轉成台灣用字「個」。",
+                "因此像「1件 * 7000个」應輸出 ordered_quantity=1、unit=箱、note=1箱 = 7000個。",
+                "像「2件 * 1000个」應輸出 ordered_quantity=2、unit=箱、note=2箱，每箱 1000個。",
+                "內含數量例如 7000個 不可當成主要清點單位，應保留在 note。",
+                "spec 保留商品規格，例如 17*30；不要把價格、金額當成數量。",
+                "如果表格中有數量欄、價格欄、金額欄，ordered_quantity 只能取數量欄，不可把價格 376 或金額 376 當成數量。",
+                "若無法判斷外層單位與內容單位，請在 warnings 中明確說明，不要亂猜。",
+              ].join(" "),
             },
             {
               type: "input_image",

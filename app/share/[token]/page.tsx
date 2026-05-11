@@ -28,6 +28,7 @@ export default async function ShareCheckingPage({ params }: { params: Promise<{ 
           spec: item.spec,
           orderedQuantity: item.orderedQuantity,
           unit: item.unit,
+          note: item.note,
           receivedQuantity: item.receivedQuantity,
           status: item.status,
           staffNote: item.staffNote,
