@@ -4,6 +4,7 @@ type OrderCountGridProps = {
   missingItems: number;
   issueItems: number;
   compact?: boolean;
+  twoColumn?: boolean;
 };
 
 const statItems = [
@@ -19,6 +20,7 @@ export function OrderCountGrid({
   missingItems,
   issueItems,
   compact = false,
+  twoColumn = false,
 }: OrderCountGridProps) {
   const values = {
     totalItems,
@@ -27,17 +29,27 @@ export function OrderCountGrid({
     issueItems,
   };
 
+  const gridClassName = twoColumn
+    ? "grid grid-cols-2 gap-3"
+    : `grid grid-cols-2 gap-2 ${compact ? "md:grid-cols-2" : "md:grid-cols-4 md:gap-3"}`;
+
   return (
-    <div className={`grid grid-cols-2 gap-2 ${compact ? "md:grid-cols-2" : "md:grid-cols-4"}`}>
+    <div className={gridClassName}>
       {statItems.map((item) => (
         <div
           className={`rounded-2xl border border-slate-200 bg-slate-50 ${
-            compact ? "px-3 py-2" : "px-3 py-2.5"
+            compact ? "px-3 py-2" : "p-4 sm:p-5"
           }`}
           key={item.key}
         >
-          <div className="text-[11px] font-medium tracking-wide text-slate-500">{item.label}</div>
-          <div className={`${compact ? "mt-1 text-base" : "mt-1 text-lg"} font-semibold text-slate-900`}>
+          <div className={`${compact ? "text-[11px]" : "text-xs"} font-medium tracking-wide text-slate-500`}>
+            {item.label}
+          </div>
+          <div
+            className={`font-semibold text-slate-900 ${
+              compact ? "mt-1 text-base sm:text-lg" : "mt-2 text-2xl sm:text-3xl"
+            }`}
+          >
             {values[item.key]}
           </div>
         </div>
