@@ -18,17 +18,41 @@ const statusClassName = {
   NEEDS_REVIEW: "bg-purple-100 text-purple-800",
 } as const;
 
-export function OrderStatusBadge({ status }: { status: PurchaseOrderStatus }) {
+type BadgeSize = "default" | "compact";
+
+function getBadgeSizeClassName(size: BadgeSize) {
+  return size === "compact"
+    ? "px-2.5 py-1 text-[11px] leading-none"
+    : "px-3 py-1 text-xs";
+}
+
+export function OrderStatusBadge({
+  status,
+  size = "default",
+}: {
+  status: PurchaseOrderStatus;
+  size?: BadgeSize;
+}) {
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusClassName[status]}`}>
+    <span
+      className={`inline-flex shrink-0 rounded-full font-semibold ${getBadgeSizeClassName(size)} ${statusClassName[status]}`}
+    >
       {purchaseOrderStatusLabel[status]}
     </span>
   );
 }
 
-export function ItemStatusBadge({ status }: { status: ItemCheckStatus }) {
+export function ItemStatusBadge({
+  status,
+  size = "default",
+}: {
+  status: ItemCheckStatus;
+  size?: BadgeSize;
+}) {
   return (
-    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${statusClassName[status]}`}>
+    <span
+      className={`inline-flex shrink-0 rounded-full font-semibold ${getBadgeSizeClassName(size)} ${statusClassName[status]}`}
+    >
       {itemStatusLabel[status]}
     </span>
   );
