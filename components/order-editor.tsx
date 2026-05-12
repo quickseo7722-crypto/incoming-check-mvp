@@ -6,7 +6,11 @@ import { useState } from "react";
 import { ItemCheckStatus, PurchaseOrderStatus } from "@prisma/client";
 import { OrderStatusBadge } from "@/components/status-badge";
 import { itemStatusOptions } from "@/lib/labels";
-import { formatPackageNote, normalizePackageOuterUnit } from "@/lib/package-note";
+import {
+  formatPackageNote,
+  normalizePackageOuterUnit,
+  parsePackageConversion,
+} from "@/lib/package-note";
 
 type EditableImage = {
   id: string;
@@ -598,6 +602,26 @@ export function OrderEditor({ initialOrder }: { initialOrder: EditableOrder }) {
                     }
                   />
                 </label>
+
+                {(() => {
+                  const conversion = parsePackageConversion(
+                    item.note,
+                    item.orderedQuantity,
+                    item.unit,
+                  );
+
+                  if (!conversion.checkUnit || conversion.expectedCheckQuantity === null) {
+                    return null;
+                  }
+
+                  return (
+                    <p className="mt-2 text-sm text-orange-700">
+                      清點提示：員工將以「{conversion.checkUnit}」作為清點單位，應收{" "}
+                      {conversion.expectedCheckQuantity}
+                      {conversion.checkUnit}
+                    </p>
+                  );
+                })()}
 
                 <div className="mt-3 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
                   <div className="flex flex-wrap items-center gap-3">

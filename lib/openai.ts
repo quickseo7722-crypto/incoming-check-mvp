@@ -93,7 +93,7 @@ function normalizeParsedItem(
   const packageSource = [note, raw_text, spec].filter(Boolean).join(" ");
   const packageHint = parsePackageNote(packageSource, unit);
 
-  // v1 rule: count outer packages in the main quantity/unit fields.
+  // Keep outer package quantity/unit in main columns, and keep inner count in note.
   if (packageHint) {
     unit = normalizePackageOuterUnit(unit || packageHint.outerUnit);
 
@@ -115,7 +115,7 @@ function normalizeParsedItem(
     note = formatPackageNote(note, unit);
 
     if ((!unit || isInnerPackageUnit(unit)) && /个|個/.test(packageSource)) {
-      warnings.push(`第 ${index + 1} 筆可能包含內含數量資訊，請人工確認主要清點單位。`);
+      warnings.push(`第 ${index + 1} 筆可能包含內含數量資訊，請人工確認清點單位。`);
     }
   }
 
@@ -171,8 +171,8 @@ function tryExtractStructuredJson(payload: any) {
   throw new Error("OpenAI 回應中找不到可解析的 JSON。");
 }
 
-// v1 stores outer package quantity/unit in the main columns and keeps
-// inner content counts in note, e.g. "1箱 = 7000個".
+// v1 stores outer package quantity/unit in main columns and keeps
+// inner content counts in note, e.g. "1箱 = 100個".
 export async function parsePurchaseOrderImage(imageUrl: string): Promise<ParsedOrderPayload> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -198,16 +198,14 @@ export async function parsePurchaseOrderImage(imageUrl: string): Promise<ParsedO
             {
               type: "input_text",
               text: [
-                "你是進貨叫貨單解析助手。請從供應商截圖或表格中擷取清點用品項，輸出必須符合 JSON schema。",
+                "你是進貨叫貨單解析助手。請從供應商截圖或表格中擷取可供清點的品項，輸出必須符合 JSON schema。",
                 "第一版清點主欄位只保留：name、spec、ordered_quantity、unit、note、raw_text、confidence。",
-                "重要規則：若出現「1件 * 7000个」、「2件 * 1000个」、「1箱 7000個」、「每箱 7000個」這種雙單位資訊，ordered_quantity 必須優先使用外層包裝數量，unit 必須優先使用外層包裝單位。",
-                "在本系統的進貨清點情境中，1688 或中國訂單中的「件」請轉成「箱」；「个」請轉成台灣用字「個」。",
-                "因此像「1件 * 7000个」應輸出 ordered_quantity=1、unit=箱、note=1箱 = 7000個。",
-                "像「2件 * 1000个」應輸出 ordered_quantity=2、unit=箱、note=2箱，每箱 1000個。",
-                "內含數量例如 7000個 不可當成主要清點單位，應保留在 note。",
-                "spec 保留商品規格，例如 17*30；不要把價格、金額當成數量。",
-                "如果表格中有數量欄、價格欄、金額欄，ordered_quantity 只能取數量欄，不可把價格 376 或金額 376 當成數量。",
-                "若無法判斷外層單位與內容單位，請在 warnings 中明確說明，不要亂猜。",
+                "如果出現雙單位資訊，例如「1件 * 100个」、「1箱 = 100個」、「每箱 100個」，ordered_quantity 必須保留外層叫貨數量，例如 1。",
+                "unit 必須保留外層包裝單位；在 1688 或中國訂單情境中，請把「件」轉成台灣較好理解的「箱」。",
+                "內含數量例如 100個 不可放進 ordered_quantity，必須保留在 note，並標準化成像「1箱 = 100個」或「2箱，每箱 1000個」。",
+                "系統後續會讓員工用內含單位作為清點單位，所以 note 必須保留這段資訊。",
+                "不要把價格、金額、折扣、運費當成數量。",
+                "spec 只保留商品規格，例如 17*30；若外層單位與內含單位不清楚，請在 warnings 說明，不要亂猜。",
               ].join(" "),
             },
             {
