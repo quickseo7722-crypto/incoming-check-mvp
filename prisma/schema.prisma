@@ -142,3 +142,40 @@ model AuditLog {
   metadata   String?
   createdAt  DateTime @default(now())
 }
+
+model Sale {
+  id            String    @id @default(cuid())
+  saleNo        String    @unique
+  checkoutTime  DateTime
+  totalAmount   Decimal   @default(0) @db.Decimal(10, 2)
+  paymentMethod String    @db.VarChar(20)
+  cashier       String    @db.VarChar(50)
+  note          String?
+  status        String    @default("normal") @db.VarChar(20)
+  voidReason    String?
+  voidTime      DateTime?
+  voidBy        String?   @db.VarChar(50)
+  items         SaleItem[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([checkoutTime])
+  @@index([paymentMethod])
+  @@index([cashier])
+  @@index([status])
+}
+
+model SaleItem {
+  id        String   @id @default(cuid())
+  saleId    String
+  sale      Sale     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  itemName  String   @db.VarChar(100)
+  quantity  Decimal  @db.Decimal(10, 2)
+  unitPrice Decimal  @db.Decimal(10, 2)
+  subtotal  Decimal  @db.Decimal(10, 2)
+  itemNote  String?
+  createdAt DateTime @default(now())
+
+  @@index([saleId])
+  @@index([itemName])
+}

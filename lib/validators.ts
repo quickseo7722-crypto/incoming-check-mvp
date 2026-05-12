@@ -1,19 +1,20 @@
 import { ItemCheckStatus } from "@prisma/client";
 import { z } from "zod";
+import { paymentMethodOptions } from "@/lib/sales";
 
 export const loginSchema = z.object({
-  email: z.string().email("請輸入正確 Email"),
-  password: z.string().min(4, "密碼至少 4 碼"),
+  email: z.string().email("請輸入有效的 Email"),
+  password: z.string().min(4, "密碼至少需要 4 碼"),
 });
 
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().min(1, "請輸入目前密碼"),
-    newPassword: z.string().min(8, "新密碼至少 8 碼"),
+    newPassword: z.string().min(8, "新密碼至少需要 8 碼"),
     confirmPassword: z.string().min(1, "請再次輸入新密碼"),
   })
   .refine((value) => value.newPassword === value.confirmPassword, {
-    message: "新密碼與確認新密碼必須一致",
+    message: "兩次輸入的新密碼不一致",
     path: ["confirmPassword"],
   });
 
@@ -25,7 +26,7 @@ export const purchaseOrderCreateSchema = z.object({
 
 export const purchaseOrderItemInputSchema = z.object({
   id: z.string().optional(),
-  name: z.string().min(1, "品名不可空白"),
+  name: z.string().min(1, "品項名稱不可空白"),
   spec: z.string().optional().default(""),
   orderedQuantity: z.number().nullable(),
   unit: z.string().optional().default(""),
@@ -55,7 +56,7 @@ export const itemCheckSchema = z.object({
 });
 
 export const shareSubmitSchema = z.object({
-  checkerName: z.string().min(1, "請輸入清點人名稱"),
+  checkerName: z.string().min(1, "請輸入清點人員名稱"),
   items: z.array(
     z.object({
       id: z.string(),
@@ -64,4 +65,29 @@ export const shareSubmitSchema = z.object({
       staffNote: z.string().optional().default(""),
     }),
   ),
+});
+
+export const saleItemCreateSchema = z.object({
+  item_name: z.string().trim().min(1, "品項名稱不可空白"),
+  quantity: z.number().positive("數量必須大於 0"),
+  unit_price: z.number().min(0, "單價不可小於 0"),
+  item_note: z.string().optional().default(""),
+});
+
+export const saleCreateSchema = z.object({
+  payment_method: z
+    .string()
+    .refine(
+      (value): value is (typeof paymentMethodOptions)[number] =>
+        paymentMethodOptions.includes(value as (typeof paymentMethodOptions)[number]),
+      "請選擇付款方式",
+    ),
+  cashier: z.string().trim().min(1, "請輸入經手人"),
+  note: z.string().optional().default(""),
+  items: z.array(saleItemCreateSchema).min(1, "請至少輸入一個品項"),
+});
+
+export const saleVoidSchema = z.object({
+  void_reason: z.string().trim().min(1, "請輸入作廢原因"),
+  void_by: z.string().trim().min(1, "請輸入作廢人員"),
 });

@@ -8,6 +8,16 @@ type AdminShellProps = {
   children: React.ReactNode;
 };
 
+const navigationItems = [
+  { href: "/dashboard", label: "首頁總覽" },
+  { href: "/purchase-orders/new", label: "新增叫貨單" },
+  { href: "/history", label: "清點歷史" },
+  { href: "/pos", label: "POS 結帳" },
+  { href: "/sales", label: "銷售紀錄" },
+  { href: "/reports/daily", label: "今日統計" },
+  { href: "/settings/password", label: "修改密碼" },
+];
+
 export function AdminShell({ title, subtitle, userName, children }: AdminShellProps) {
   return (
     <main className="min-h-screen px-4 py-6 md:px-8">
@@ -21,24 +31,17 @@ export function AdminShell({ title, subtitle, userName, children }: AdminShellPr
             </div>
             <div className="flex flex-col items-start gap-3 md:items-end">
               <div className="rounded-full border border-white/20 bg-white/10 px-4 py-2 text-sm text-orange-50">
-                管理者：{userName}
+                目前登入：{userName}
               </div>
               <LogoutButton />
             </div>
           </div>
           <div className="flex flex-wrap gap-3 border-t border-white/40 bg-white/70 px-6 py-4 text-sm">
-            <Link className="btn-secondary" href="/dashboard">
-              儀表板
-            </Link>
-            <Link className="btn-secondary" href="/purchase-orders/new">
-              新增叫貨單
-            </Link>
-            <Link className="btn-secondary" href="/history">
-              歷史紀錄
-            </Link>
-            <Link className="btn-secondary" href="/settings/password">
-              修改密碼
-            </Link>
+            {navigationItems.map((item) => (
+              <Link className="btn-secondary" href={item.href} key={item.href}>
+                {item.label}
+              </Link>
+            ))}
           </div>
         </section>
 
