@@ -5,6 +5,7 @@ import {
   type PurchaseOrderItem,
 } from "@prisma/client";
 import { issueStatuses } from "@/lib/labels";
+import { parsePackageConversion } from "@/lib/package-note";
 
 export function parseNumber(input: unknown) {
   if (input === null || input === undefined || input === "") return null;
@@ -12,12 +13,21 @@ export function parseNumber(input: unknown) {
   return Number.isFinite(value) ? value : null;
 }
 
-export function buildOrderStatus(items: Array<Pick<PurchaseOrderItem, "status" | "orderedQuantity" | "receivedQuantity" | "staffNote">>) {
+export function buildOrderStatus(
+  items: Array<
+    Pick<
+      PurchaseOrderItem,
+      "status" | "orderedQuantity" | "receivedQuantity" | "staffNote" | "unit" | "note"
+    >
+  >,
+) {
   if (!items.length) return PurchaseOrderStatus.DRAFT;
   const hasUnchecked = items.some((item) => item.status === ItemCheckStatus.UNCHECKED);
   const hasIssue = items.some((item) => {
     if (issueStatuses.has(item.status)) return true;
-    if ((item.receivedQuantity ?? null) !== (item.orderedQuantity ?? null)) return true;
+    const conversion = parsePackageConversion(item.note, item.orderedQuantity, item.unit);
+    const expectedQuantity = conversion.expectedCheckQuantity ?? item.orderedQuantity ?? null;
+    if ((item.receivedQuantity ?? null) !== expectedQuantity) return true;
     return Boolean(item.staffNote?.trim());
   });
 

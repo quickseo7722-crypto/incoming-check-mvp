@@ -1,7 +1,7 @@
-const OUTER_UNITS = ["件", "箱", "包", "組", "套", "袋", "盒", "板", "卷", "捆", "扎"] as const;
+const OUTER_UNITS = ["箱", "包", "組", "套", "袋", "盒", "板", "卷", "捆", "扎", "件"] as const;
 const INNER_UNITS = [
-  "个",
   "個",
+  "个",
   "pcs",
   "pc",
   "只",
@@ -12,8 +12,8 @@ const INNER_UNITS = [
   "对",
   "雙",
   "双",
-  "条",
   "條",
+  "条",
   "瓶",
   "罐",
 ] as const;
@@ -23,6 +23,18 @@ export type ParsedPackageNote = {
   outerUnit: string;
   innerQuantity: number;
   innerUnit: string;
+};
+
+export type PackageConversion = {
+  orderQuantity: number | null;
+  orderUnit: string | null;
+  packageCount: number | null;
+  packageUnit: string | null;
+  innerQuantityPerPackage: number | null;
+  innerUnit: string | null;
+  expectedCheckQuantity: number | null;
+  checkUnit: string | null;
+  displayNote: string;
 };
 
 function trimText(value?: string | null) {
@@ -46,11 +58,25 @@ function formatNumber(value: number) {
   return Number.isInteger(value) ? String(value) : String(value);
 }
 
+function normalizeNoteText(note?: string | null) {
+  return normalizeWhitespace(
+    trimText(note)
+      .replaceAll("件", "箱")
+      .replaceAll("个", "個")
+      .replaceAll("对", "對")
+      .replaceAll("双", "雙")
+      .replaceAll("条", "條"),
+  );
+}
+
 export function normalizePackageOuterUnit(unit?: string | null) {
   const text = trimText(unit);
   if (!text) return "";
   if (text === "件") return "箱";
   if (text === "个" || text === "個") return "個";
+  if (text === "对") return "對";
+  if (text === "双") return "雙";
+  if (text === "条") return "條";
   return text;
 }
 
@@ -72,7 +98,7 @@ export function isInnerPackageUnit(unit?: string | null) {
 }
 
 export function parsePackageNote(note?: string | null, preferredUnit?: string | null): ParsedPackageNote | null {
-  const text = normalizeWhitespace(trimText(note));
+  const text = normalizeNoteText(note);
   if (!text) return null;
 
   const outerUnitGroup = OUTER_UNITS.map(escapeRegExp).join("|");
@@ -85,11 +111,11 @@ export function parsePackageNote(note?: string | null, preferredUnit?: string | 
       "i",
     ),
     new RegExp(
-      `(\\d+(?:\\.\\d+)?)\\s*(${outerUnitGroup})\\s+(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
+      `(\\d+(?:\\.\\d+)?)\\s*(${outerUnitGroup})\\s*[，,、]?\\s*每(?:\\s*${outerUnitGroup})?\\s*(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
       "i",
     ),
     new RegExp(
-      `(\\d+(?:\\.\\d+)?)\\s*(${outerUnitGroup})\\s*[，,、]?\\s*每(?:\\s*${outerUnitGroup})?\\s*(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
+      `(\\d+(?:\\.\\d+)?)\\s*(${outerUnitGroup})\\s+(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`,
       "i",
     ),
     new RegExp(`每\\s*(${outerUnitGroup})\\s*(\\d+(?:\\.\\d+)?)\\s*(${innerUnitGroup})`, "i"),
@@ -120,27 +146,66 @@ export function parsePackageNote(note?: string | null, preferredUnit?: string | 
 }
 
 export function formatPackageNote(note?: string | null, preferredUnit?: string | null) {
-  const text = normalizeWhitespace(trimText(note));
+  const text = normalizeNoteText(note);
   if (!text) return "";
 
   const parsed = parsePackageNote(text, preferredUnit);
-  if (parsed) {
-    const outerUnit = normalizePackageOuterUnit(preferredUnit) || parsed.outerUnit;
-    if (parsed.outerQuantity === null) {
-      return `每${outerUnit} ${formatNumber(parsed.innerQuantity)}${parsed.innerUnit}`;
-    }
+  if (!parsed) return text;
 
-    if (parsed.outerQuantity === 1) {
-      return `1${outerUnit} = ${formatNumber(parsed.innerQuantity)}${parsed.innerUnit}`;
-    }
+  const outerUnit = normalizePackageOuterUnit(preferredUnit) || parsed.outerUnit;
 
-    return `${formatNumber(parsed.outerQuantity)}${outerUnit}，每${outerUnit} ${formatNumber(parsed.innerQuantity)}${parsed.innerUnit}`;
+  if (parsed.outerQuantity === null) {
+    return `每${outerUnit} ${formatNumber(parsed.innerQuantity)}${parsed.innerUnit}`;
   }
 
-  return text
-    .replaceAll("件", "箱")
-    .replaceAll("个", "個")
-    .replaceAll("对", "對")
-    .replaceAll("双", "雙")
-    .replaceAll("条", "條");
+  if (parsed.outerQuantity === 1) {
+    return `1${outerUnit} = ${formatNumber(parsed.innerQuantity)}${parsed.innerUnit}`;
+  }
+
+  return `${formatNumber(parsed.outerQuantity)}${outerUnit}，每${outerUnit} ${formatNumber(parsed.innerQuantity)}${parsed.innerUnit}`;
+}
+
+export function parsePackageConversion(
+  note?: string | null,
+  orderQuantity?: number | null,
+  orderUnit?: string | null,
+): PackageConversion {
+  const normalizedOrderUnit = normalizePackageOuterUnit(orderUnit) || null;
+  const displayNote = formatPackageNote(note, normalizedOrderUnit);
+  const parsed = parsePackageNote(displayNote || note, normalizedOrderUnit);
+
+  if (!parsed) {
+    return {
+      orderQuantity: orderQuantity ?? null,
+      orderUnit: normalizedOrderUnit,
+      packageCount: orderQuantity ?? null,
+      packageUnit: normalizedOrderUnit,
+      innerQuantityPerPackage: null,
+      innerUnit: null,
+      expectedCheckQuantity: orderQuantity ?? null,
+      checkUnit: normalizedOrderUnit,
+      displayNote,
+    };
+  }
+
+  const packageCount = parsed.outerQuantity ?? orderQuantity ?? null;
+  const packageUnit = normalizedOrderUnit || parsed.outerUnit;
+  const expectedCheckQuantity =
+    orderQuantity !== null && orderQuantity !== undefined
+      ? orderQuantity * parsed.innerQuantity
+      : packageCount !== null
+        ? packageCount * parsed.innerQuantity
+        : null;
+
+  return {
+    orderQuantity: orderQuantity ?? null,
+    orderUnit: normalizedOrderUnit,
+    packageCount,
+    packageUnit,
+    innerQuantityPerPackage: parsed.innerQuantity,
+    innerUnit: parsed.innerUnit,
+    expectedCheckQuantity,
+    checkUnit: parsed.innerUnit,
+    displayNote,
+  };
 }

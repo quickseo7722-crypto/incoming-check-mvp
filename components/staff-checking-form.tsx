@@ -3,7 +3,11 @@
 import { useMemo, useState } from "react";
 import { ItemCheckStatus } from "@prisma/client";
 import { itemStatusLabel } from "@/lib/labels";
-import { formatPackageNote, normalizePackageOuterUnit } from "@/lib/package-note";
+import {
+  normalizePackageOuterUnit,
+  parsePackageConversion,
+  type PackageConversion,
+} from "@/lib/package-note";
 
 type StaffOrderItem = {
   id: string;
@@ -15,6 +19,12 @@ type StaffOrderItem = {
   receivedQuantity: number | null;
   status: ItemCheckStatus;
   staffNote: string | null;
+};
+
+type StaffFormItem = StaffOrderItem & {
+  displayNote: string;
+  checkUnit: string | null;
+  expectedCheckQuantity: number | null;
 };
 
 type StaffOrder = {
@@ -48,17 +58,26 @@ function normalizeQuantity(value: string) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function buildCheckModel(item: StaffOrderItem): PackageConversion {
+  return parsePackageConversion(item.note, item.orderedQuantity, item.unit);
+}
+
+function buildEditableItem(item: StaffOrderItem): StaffFormItem {
+  const conversion = buildCheckModel(item);
+  return {
+    ...item,
+    unit: normalizePackageOuterUnit(item.unit),
+    displayNote: conversion.displayNote,
+    checkUnit: conversion.checkUnit,
+    expectedCheckQuantity: conversion.expectedCheckQuantity,
+    staffNote: item.staffNote || "",
+    receivedQuantity: item.receivedQuantity ?? conversion.expectedCheckQuantity ?? item.orderedQuantity ?? null,
+  };
+}
+
 export function StaffCheckingForm({ order }: { order: StaffOrder }) {
   const [checkerName, setCheckerName] = useState("");
-  const [items, setItems] = useState(
-    order.items.map((item) => ({
-      ...item,
-      unit: normalizePackageOuterUnit(item.unit),
-      note: formatPackageNote(item.note, item.unit),
-      staffNote: item.staffNote || "",
-      receivedQuantity: item.receivedQuantity ?? item.orderedQuantity ?? null,
-    })),
-  );
+  const [items, setItems] = useState(order.items.map(buildEditableItem));
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -93,28 +112,75 @@ export function StaffCheckingForm({ order }: { order: StaffOrder }) {
     setBusy(true);
     setMessage("");
 
-    const response = await fetch(`/api/share/${order.shareToken}/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        checkerName,
-        items: items.map((item) => ({
-          id: item.id,
-          receivedQuantity: item.receivedQuantity,
-          status: item.status,
-          staffNote: item.staffNote,
-        })),
-      }),
-    });
-    const payload = await response.json();
-    setBusy(false);
+    try {
+      const response = await fetch(`/api/share/${order.shareToken}/submit`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          checkerName,
+          items: items.map((item) => ({
+            id: item.id,
+            receivedQuantity: item.receivedQuantity,
+            status: item.status,
+            staffNote: item.staffNote,
+          })),
+        }),
+      });
+      const payload = await response.json();
 
-    if (!response.ok) {
-      setMessage(payload.error || "送出失敗，請稍後再試。");
-      return;
+      if (!response.ok) {
+        setMessage(payload.error || "送出失敗，請稍後再試。");
+        return;
+      }
+
+      setMessage("清點結果已送出，老闆可以開始查看差異。");
+    } catch {
+      setMessage("送出失敗，請稍後再試。");
+    } finally {
+      setBusy(false);
     }
+  }
 
-    setMessage("清點結果已送出，老闆可以開始查看差異。");
+  function updateStatus(itemId: string, nextStatus: ItemCheckStatus) {
+    setItems((current) =>
+      current.map((entry) => {
+        if (entry.id !== itemId) return entry;
+
+        if (nextStatus === ItemCheckStatus.RECEIVED) {
+          return {
+            ...entry,
+            status: nextStatus,
+            receivedQuantity:
+              entry.expectedCheckQuantity ?? entry.orderedQuantity ?? entry.receivedQuantity,
+          };
+        }
+
+        if (nextStatus === ItemCheckStatus.MISSING) {
+          return {
+            ...entry,
+            status: nextStatus,
+            receivedQuantity: 0,
+          };
+        }
+
+        if (
+          (nextStatus === ItemCheckStatus.PARTIAL ||
+            nextStatus === ItemCheckStatus.QUANTITY_MISMATCH) &&
+          entry.receivedQuantity === null
+        ) {
+          return {
+            ...entry,
+            status: nextStatus,
+            receivedQuantity: entry.expectedCheckQuantity ?? entry.orderedQuantity ?? null,
+          };
+        }
+
+        return {
+          ...entry,
+          status: nextStatus,
+        };
+      }),
+    );
   }
 
   return (
@@ -124,7 +190,7 @@ export function StaffCheckingForm({ order }: { order: StaffOrder }) {
           <p className="text-sm uppercase tracking-[0.3em] text-orange-100">Staff Check Link</p>
           <h1 className="mt-3 text-3xl font-semibold">{order.title}</h1>
           <p className="mt-2 text-sm text-orange-50/90">
-            供應商 / 來源：{order.supplierName || "未填寫"}，請依照以下品項逐筆完成清點。
+            來源：{order.supplierName || "未填寫"}，請依照以下品項逐筆完成清點。
           </p>
         </div>
         <div className="grid gap-4 px-5 py-5 md:grid-cols-[1fr_auto] md:items-center">
@@ -159,16 +225,20 @@ export function StaffCheckingForm({ order }: { order: StaffOrder }) {
                   Item {index + 1}
                 </p>
                 <h2 className="mt-2 break-words text-xl font-semibold">{item.name}</h2>
-                <p className="mt-2 text-sm text-slate-600">規格：{item.spec || "未填寫"}</p>
-                <p className="mt-1 text-sm text-slate-600">
-                  叫貨數量：{item.orderedQuantity ?? "未填寫"}
-                  {item.unit || ""}
-                </p>
-                {item.note ? (
-                  <p className="mt-1 break-words text-sm text-slate-600">
-                    包裝說明：{item.note}
+                <div className="mt-2 space-y-1 text-sm text-slate-600">
+                  <p className="break-words">規格：{item.spec || "未填寫"}</p>
+                  <p>
+                    叫貨數量：{item.orderedQuantity ?? "未填寫"}
+                    {item.unit || ""}
                   </p>
-                ) : null}
+                  {item.displayNote ? <p className="break-words">包裝說明：{item.displayNote}</p> : null}
+                  <p>清點單位：{item.checkUnit || item.unit || "未填寫"}</p>
+                  <p>
+                    應收數量：
+                    {item.expectedCheckQuantity ?? item.orderedQuantity ?? "未填寫"}
+                    {item.checkUnit || item.unit || ""}
+                  </p>
+                </div>
               </div>
               <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
                 {itemStatusLabel[item.status]}
@@ -185,22 +255,7 @@ export function StaffCheckingForm({ order }: { order: StaffOrder }) {
                   }`}
                   key={status}
                   type="button"
-                  onClick={() =>
-                    setItems((current) =>
-                      current.map((entry) =>
-                        entry.id === item.id
-                          ? {
-                              ...entry,
-                              status,
-                              receivedQuantity:
-                                status === ItemCheckStatus.RECEIVED
-                                  ? entry.orderedQuantity ?? entry.receivedQuantity
-                                  : entry.receivedQuantity,
-                            }
-                          : entry,
-                      ),
-                    )
-                  }
+                  onClick={() => updateStatus(item.id, status)}
                 >
                   {itemStatusLabel[status]}
                 </button>
@@ -210,30 +265,35 @@ export function StaffCheckingForm({ order }: { order: StaffOrder }) {
             <div className="mt-4 grid gap-3 md:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
                 實收數量
-                <input
-                  className="field"
-                  inputMode="decimal"
-                  value={item.receivedQuantity ?? ""}
-                  onChange={(event) =>
-                    setItems((current) =>
-                      current.map((entry) =>
-                        entry.id === item.id
-                          ? {
-                              ...entry,
-                              receivedQuantity: normalizeQuantity(event.target.value),
-                            }
-                          : entry,
-                      ),
-                    )
-                  }
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    className="field"
+                    inputMode="decimal"
+                    value={item.receivedQuantity ?? ""}
+                    onChange={(event) =>
+                      setItems((current) =>
+                        current.map((entry) =>
+                          entry.id === item.id
+                            ? {
+                                ...entry,
+                                receivedQuantity: normalizeQuantity(event.target.value),
+                              }
+                            : entry,
+                        ),
+                      )
+                    }
+                  />
+                  <span className="shrink-0 text-sm text-slate-500">
+                    {item.checkUnit || item.unit || ""}
+                  </span>
+                </div>
               </label>
 
               <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
                 備註
                 <input
                   className="field"
-                  placeholder="例如：少 2 箱、外箱破損"
+                  placeholder="例如：少 20 個、外箱破損"
                   value={item.staffNote || ""}
                   onChange={(event) =>
                     setItems((current) =>
